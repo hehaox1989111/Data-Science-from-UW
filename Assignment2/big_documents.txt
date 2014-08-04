@@ -1,0 +1,6 @@
+107
+
+
+select docid,sum( [count])  from frequency
+Group BY docid
+HAVING sum([count])>300

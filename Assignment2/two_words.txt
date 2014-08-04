@@ -1,0 +1,11 @@
+3
+
+select count(*) from (select docid
+from frequency 
+where term = 'transaction') as F1
+,(
+select docid
+from frequency 
+where term = 'world'
+) as F2
+Where F1.docid=F2.docid

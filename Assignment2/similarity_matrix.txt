@@ -1,0 +1,14 @@
+19
+
+
+select sum(Scores) From
+(select A.term as AT,B.term as BT,A.[count]*B.[count] as Scores
+From (select * from frequency
+where docid='17035_txt_earn') as A
+Join
+(select * from frequency
+where docid='10080_txt_crude') as B
+On A.term=B.term
+ORDER BY A.term, B.term
+)
+
