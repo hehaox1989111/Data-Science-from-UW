@@ -1,6 +1,7 @@
+import time
 import sys
-import re
 import json
+import re
 
 state_mapping = { 
 	"alabama": "al",
@@ -57,49 +58,115 @@ state_mapping = {
 token_regex = re.compile(r'\w+')
 abbr_state_regex = re.compile(r'\w{2}')
 
+class SentimentScore(object):
+	_lookup = None
 
+	def __init__(self, sent_file):
+		if SentimentScore._lookup is None:
+			SentimentScore._lookup = self._build_lookup(sent_file)
 
+	def _build_lookup(self, sent_file):
+		scores = {} # initialize an empty dictionary
+		for line in sent_file:
+		  term, score  = line.split("\t")  # The file is tab-delimited. "\t" means "tab character"
+		  scores[term] = int(score)  # Convert the score to an integer.
 
+		return scores
 
+	def get_score(self, word):
+		return self._lookup.get(word, 0)
 
+def load_tweets(fp):
+	"""
+	Creates in-memory JSON objects from a tweet file ``fp``.
+	"""
+
+	lst = []
+
+	line = fp.readline()
+	while len(line) is not 0:
+		data = json.loads(line.strip())
+		lst.append(data)
+		line = fp.readline()
+
+	return lst
 
 def parse_tweet(tweet):
-    pattern=re.compile(u'\w+')
-    parse=[]
-    for t in tweet:
-        if 'text' in t.keys():
-            words=pattern.findall(t['text'])
-            parse.append(words)
-    return parse
+	
+	if 'text' not in tweet.keys():
+		return []
 
+	return token_regex.findall(tweet['text'])
 
+def parse_user_loc(tweet, abbr_states):
 
+	tokens = token_regex.findall(tweet['user']['location'])
+	abbr_state = filter(lambda t: t in abbr_states, tokens)
+	
+	if not len(abbr_state) is 0:
+		return abbr_state[0]
 
-def load_tweet(data):
-    lst=[]
-    line = data.readline()
-    while len(line) is not 0:
-	data1 = json.loads(line.strip())
-	lst.append(data1)
-	line = data.readline()
-    return lst
+	states = filter(lambda t: t in state_mapping.keys(), tokens)
 
+	if not len(states) is 0:
+		state = states[0]
+		return state_mapping[state]
 
-def SentimentScore(sent_s):
-    scores = {} # initialize an empty dictionary
-    for line in sent_s:
-        term, score  = line.split("\t")  # The file is tab-delimited. "\t" means "tab character"
-        scores[term] = int(score)  # Convert the score to an integer.
-    return scores;
+	return None
 
+def print_happy_state(sent_file, tweet_file):
 
+	scores = SentimentScore(sent_file)
+
+	tweets = filter(lambda t: 'delete' not in t.keys(), load_tweets(tweet_file))
+
+	abbr_states = set(map(lambda (k,v): v, state_mapping.items()))
+
+	state_scores = dict.fromkeys(abbr_states, 0)
+
+	state_tweets = filter(
+		lambda t: 'place' in t.keys() \
+			and t['place'] is not None \
+			and t['place']['name'].lower() in state_mapping.keys(), tweets)
+
+	state_tweet_ids = set(map(lambda t: t['id'], state_tweets))
+
+	rest_tweets = filter(lambda t: t['id'] not in state_tweet_ids, tweets)
+
+	if len(state_tweets) > 0:
+		rest_tweets.extend(state_tweets)
+
+	for t in rest_tweets:
+		text =  parse_tweet(t)
+		if len(text) is 0:
+			continue
+		
+		score = sum([scores.get_score(w) for w in text])
+
+		if t['id'] in state_tweet_ids:
+			state = t['place']['name'].lower()
+			key = state_mapping[state]
+		else:
+			key = parse_user_loc(t, abbr_states)
+			if key is None: 
+				continue
+
+		state_scores[key] = state_scores[key] + score
+
+	sent_max = 0
+	happy_state = ""
+	for (k,v) in state_scores.items():
+		if v > sent_max:
+			sent_max = v
+			happy_state = k
+
+	print happy_state.upper()
 
 def main():
     sent_file = open(sys.argv[1])
     tweet_file = open(sys.argv[2])
-    
-    print_senitments(sent_file,tweet_file)
 
+    print_happy_state(sent_file, tweet_file)
 
     sent_file.close()
     tweet_file.close()
